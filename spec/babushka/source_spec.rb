@@ -133,6 +133,15 @@ describe Source do
     end
   end
 
+  describe '#clear!' do
+    let(:source) { Source.new(nil) }
+    it "should clear the deps and templates" do
+      source.deps.should_receive(:clear!)
+      source.templates.should_receive(:clear!)
+      source.clear!
+    end
+  end
+
   describe "loading deps" do
     context "with a good source" do
       before {
@@ -157,6 +166,7 @@ describe Source do
       }
       it "should raise an error" do
         expect { @source.load! }.to raise_error(Babushka::SourceLoadError)
+        @source.deps.count.should == 0
       end
     end
   end
