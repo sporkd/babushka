@@ -32,6 +32,7 @@ module Babushka
       @payload = {}
       @block = block
       @loaded, @failed = false, false
+      @current_platform = nil
     end
 
     def loaded?; @loaded end
@@ -50,7 +51,7 @@ module Babushka
 
     def invoke task_name
       define! unless loaded?
-      instance_eval &send(task_name) unless failed?
+      instance_eval(&send(task_name)) unless failed?
     end
 
     def result message, opts = {}
@@ -60,18 +61,15 @@ module Babushka
     end
 
     def met message
-      deprecated! "2012-06-22", :instead => "a truthy return value from met?{} (maybe using #log_ok)"
-      result message, :result => true
+      removed! :instead => "a truthy return value from met?{} (maybe using #log_ok)"
     end
 
     def unmet message
-      deprecated! "2012-06-22", :instead => "a falsey return value from met?{} (maybe using #log)"
-      result message, :result => false
+      removed! :instead => "a falsey return value from met?{} (maybe using #log)"
     end
 
     def unmeetable message
-      deprecated! "2012-06-22", :instead => "#unmeetable!"
-      raise Babushka::UnmeetableDep, message
+      removed! :instead => "#unmeetable!"
     end
 
     def unmeetable! message
@@ -116,6 +114,10 @@ module Babushka
 
     def pkg_manager
       UnknownPkgHelper
+    end
+
+    def current_platform
+      @current_platform
     end
 
     def on platform, &blk

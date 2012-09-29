@@ -1,6 +1,8 @@
 module Babushka
   class SourceError < StandardError
   end
+  class SourceLoadError < LoadError
+  end
   class Source
     include GitHelpers
     include LogHelpers
@@ -47,8 +49,10 @@ module Babushka
         [nil, :implicit]
       elsif path.to_s.sub(/^\w+:\/\//, '')[/^[^\/]+[@:]/]
         [path.to_s, :private]
-      elsif path.to_s[/^(git|https?|file):\/\//]
+      elsif path.to_s[/^git:\/\//]
         [path.to_s, :public]
+      elsif path.to_s[/^\w+:\/\//]
+        [path.to_s, :private]
       else
         [path.p, :local]
       end
@@ -88,6 +92,7 @@ module Babushka
     def prefix
       self.class.source_prefix
     end
+
     def path
       if implicit? || local?
         @uri
@@ -103,6 +108,7 @@ module Babushka
     def updated_at
       Time.now - File.mtime(path)
     end
+
     def description_pieces
       [
         name,
@@ -111,21 +117,27 @@ module Babushka
         ("#{updated_at.round.xsecs} ago" if cloneable?)
       ]
     end
+
     def type
       @type
     end
+
     def cloneable?
       [:public, :private].include? type
     end
+
     def cloned?
       cloneable? && File.directory?(path / '.git')
     end
+
     def present?
       cloneable? ? cloned? : path.exists?
     end
+
     def local?
       type == :local
     end
+
     def implicit?
       type == :implicit
     end
@@ -148,12 +160,14 @@ module Babushka
       end
     end
 
+    def clear!
+      deps.clear!
+      templates.clear!
+    end
+
     def load! should_update = false
       unless @currently_loading
         @currently_loading = true
-        if !@loaded && cloned? && !should_update
-          log "Behaviour change: not updating '#{name}'. To update sources as they're loaded, use the new '--update' option.".colorize('on grey')
-        end
         update! if cloneable? && (!cloned? || should_update)
         load_deps! unless implicit? # implicit sources can't be loaded.
         @currently_loading = false
@@ -164,18 +178,15 @@ module Babushka
       unless @loaded
         path.p.glob('**/*.rb').each {|f|
           Base.sources.load_context :source => self, :path => f do
-            begin
-              load f
-            rescue StandardError => e
-              log_error "#{e.backtrace.first}: #{e.message}"
-              log "Check #{(e.backtrace.detect {|l| l[f] } || f).sub(/\:in [^:]+$/, '')}."
-              debug e.backtrace * "\n"
-            end
+            load f
           end
         }
-        debug "Loaded #{deps.count} deps from #{path}." unless deps.count.zero?
+        debug "Loaded #{deps.count} deps from #{path}."
         @loaded = true
       end
+    rescue StandardError, SyntaxError => e
+      clear!
+      raise SourceLoadError.new(e.message).tap {|raised| raised.set_backtrace(e.backtrace) }
     end
 
     def update!

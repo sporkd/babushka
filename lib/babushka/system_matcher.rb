@@ -16,13 +16,12 @@ module Babushka
       [*specs].any? {|spec| first_nonmatch_for(spec).nil? }
     end
 
-    def distinguish_from specs
-      nonmatches = [*specs].map {|spec|
+    def differentiator_for specs
+      [*specs].map {|spec|
         first_nonmatch_for spec
       }.sort_by {|spec|
         [:system, :flavour, :name].index spec
-      }.compact
-      send "#{nonmatches.last}_str" unless nonmatches.empty?
+      }.compact.last
     end
 
     private
@@ -46,6 +45,7 @@ module Babushka
     def our_flavours
       SystemDefinitions.names[system].keys
     end
+
     def our_flavour_names
       SystemDefinitions.names[system][flavour].values
     end

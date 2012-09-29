@@ -19,22 +19,20 @@ describe Source do
     it "should label nil paths as implicit" do
       Source.discover_uri_and_type(nil).should == [nil, :implicit]
     end
-    it "should treat URLs containing auth info as private" do
-      [
-        'http://ben@server.org/benhoskings/babushka.git',
-        'https://ben:secret@server.org/benhoskings/babushka.git'
-      ].each {|uri|
-        Source.discover_uri_and_type(uri).should == [uri, :private]
-      }
-    end
-    it "should treat git:// and friends as public" do
+    it "should treat git:// as public" do
       [
         'git://github.com/benhoskings/babushka-deps.git',
+      ].each {|uri|
+        Source.discover_uri_and_type(uri).should == [uri, :public]
+      }
+    end
+    it "should treat other protocols as private" do
+      [
         'http://github.com/benhoskings/babushka-deps.git',
         'https://github.com/benhoskings/babushka-deps.git',
         'file:///Users/ben/babushka/deps'
       ].each {|uri|
-        Source.discover_uri_and_type(uri).should == [uri, :public]
+        Source.discover_uri_and_type(uri).should == [uri, :private]
       }
     end
     it "should treat ssh-style URLs as private" do
@@ -133,6 +131,15 @@ describe Source do
     end
   end
 
+  describe '#clear!' do
+    let(:source) { Source.new(nil) }
+    it "should clear the deps and templates" do
+      source.deps.should_receive(:clear!)
+      source.templates.should_receive(:clear!)
+      source.clear!
+    end
+  end
+
   describe "loading deps" do
     context "with a good source" do
       before {
@@ -154,11 +161,10 @@ describe Source do
     context "with a source with errors" do
       before {
         @source = Source.new('spec/deps/bad')
-        @source.load!
       }
-      it "should recover from load errors" do
-        @source.deps.names.should include('broken test dep 1')
-        @source.deps.names.should include('test dep 1')
+      it "should raise an error" do
+        expect { @source.load! }.to raise_error(Babushka::SourceLoadError)
+        @source.deps.count.should == 0
       end
     end
   end
@@ -288,7 +294,7 @@ describe Source do
       @source.deps.items.include?(@source.find('test dep 1')).should be_true
     end
     it "should find the specified template" do
-      @source.find_template('test_meta_1').should be_an_instance_of(MetaDep)
+      @source.find_template('test_meta_1').should be_an_instance_of(DepTemplate)
       @source.templates.items.include?(@source.find_template('test_meta_1')).should be_true
     end
   end
@@ -442,17 +448,6 @@ describe Source do
       @source.stub!(:cloned?).and_return(true)
       @source.should_receive(:update!)
       @source.load!(true)
-    end
-  end
-
-  describe "classification" do
-    it "should treat file:// as public" do
-      (source = Source.new(*@remote_1))
-      [source.uri, source.name, source.type].should == [@remote_1.first, 'remote_1', :public]
-    end
-    it "should treat local paths as local" do
-      (source = Source.new(@remote_1.first.gsub(/^file:\/\//, ''), @remote_1.last))
-      [source.uri, source.name, source.type].should == [@remote_1.first.gsub(/^file:\/\//, ''), 'remote_1', :local]
     end
   end
 end

@@ -1,5 +1,5 @@
 module Babushka
-  VERSION        = '0.13.5'
+  VERSION        = '0.14.0'
   WorkingPrefix  = '~/.babushka'
   SourcePrefix   = '~/.babushka/sources'
   BuildPrefix    = '~/.babushka/build'
@@ -13,7 +13,7 @@ module Babushka
     def self.bin() File.dirname(binary) end
     def self.path() File.dirname(bin) end
     def self.lib() File.join(path, 'lib') end
-    def self.run_from_path?() ENV['PATH'].split(':').include? File.dirname($0) end
+    def self.run_from_path?() ENV['PATH'].split(':').include?(File.dirname($0)) end
   end
 end
 

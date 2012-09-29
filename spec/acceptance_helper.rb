@@ -7,8 +7,8 @@ require 'cloudservers'
 require 'spec_helper'
 
 class Babushka::Logging
-  def self.print_log message, printable
-    print message if printable
+  def self.write_to_persistent_log message
+    # Don't overwrite logs when running acceptance specs.
   end
 end
 
@@ -97,9 +97,11 @@ class VM
       :username => cfg['username'], :api_key => cfg['api_key']
     )
   end
+
   def cfg
     @_cfg ||= YAML.load_file(Babushka::Path.path / 'conf/rackspace.yml')
   end
+
   def public_key
     Dir.glob(File.expand_path("~/.ssh/id_[dr]sa.pub")).first
   end

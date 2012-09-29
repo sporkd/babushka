@@ -7,10 +7,10 @@ module Babushka
     # and private when included.
     module_function
 
-    # Log to STDERR. This isn't babushka-style logging; it's just here so it's
-    # easily stubbable during testing.
-    def log_stderr message
-      $stderr.puts message
+    # Log +message+ to STDERR. This is a shortcut for
+    #   log(message, :as => :error)
+    def log_stderr message, opts = {}, &block
+      log message, opts.merge(:as => :stderr), &block
     end
 
     # Log +message+ as an error. This is a shortcut for
@@ -72,6 +72,14 @@ module Babushka
       log ''
     end
 
+    def removed! opts = {}
+      opts[:method_name] ||= "##{caller[0].scan(/`(\w+)'$/).flatten.first}"
+      warning = "#{opts[:method_name]} has been removed after being deprecated."
+      instead = " Use #{opts[:instead]} instead#{opts[:example] ? ", e.g.:" : '.'}" unless opts[:instead].nil?
+      message = ["#{warning}#{instead}", opts[:example]].compact.join("\n")
+      raise NoMethodError.new(message)
+    end
+
     # Write +message+ to the log.
     #
     # By default, the log is written to STDOUT, and to ~/.babushka/logs/<dep_name>.
@@ -100,9 +108,9 @@ module Babushka
       # now = Time.now
       # print "#{now.to_i}.#{now.usec}: ".ljust(20) unless opts[:debug]
       printable = !opts[:debug] || Base.task.opt(:debug)
-      Logging.print_log Logging.indentation, printable unless opts[:indentation] == false
+      Logging.print_log(Logging.indentation, printable, false) unless opts[:indentation] == false
       if block_given?
-        Logging.print_log "#{message} {".colorize('grey') + "\n", printable
+        Logging.print_log("#{message} {".colorize('grey') + "\n", printable, false)
         Logging.indent! if printable
         yield.tap {|result|
           Logging.undent! if printable
@@ -115,7 +123,7 @@ module Babushka
         message = message.colorize 'yellow' if opts[:as] == :warning
         message = message.colorize 'bold' if opts[:as] == :stderr
         message = message.end_with "\n" unless opts[:newline] == false
-        Logging.print_log message, printable
+        Logging.print_log(message, printable, opts[:as])
         $stdout.flush
         nil
       end
@@ -142,6 +150,11 @@ module Babushka
       end
     end
 
+    def self.log_exception exception
+      log_error "#{exception.backtrace.first}: #{exception.message}"
+      debug exception.backtrace * "\n"
+    end
+
     def self.log_table headings, rows
       all_rows = rows.map {|row|
         row.map(&:to_s)
@@ -165,8 +178,14 @@ module Babushka
 
     private
 
-    def self.print_log message, printable
-      print message if printable
+    def self.print_log message, printable, as
+      if !printable
+        # Only written to the log file.
+      elsif [:error, :stderr].include?(as)
+        $stderr.print message
+      elsif !Base.task.opt(:silent)
+        $stdout.print message
+      end
       write_to_persistent_log message
     end
 
@@ -177,13 +196,16 @@ module Babushka
     def self.indentation
       ' ' * indentation_level * 2
     end
+
     def self.indentation_level
       @indentation_level ||= 0
     end
+
     def self.indent!
       @indentation_level ||= 0
       @indentation_level += 1
     end
+
     def self.undent!
       @indentation_level ||= 0
       @indentation_level -= 1

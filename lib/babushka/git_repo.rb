@@ -253,9 +253,10 @@ module Babushka
       repo_shell("git checkout '#{refspec}'")
     end
 
-    # Check out the supplied refspec, detaching the HEAD.
+    # Check out the supplied refspec, detaching the HEAD (if the installed git
+    # version supports doing that).
     def detach! refspec
-      repo_shell("git checkout --detach '#{refspec}'")
+      repo_shell("git checkout '#{resolve(refspec)}'")
     end
 
     # Reset the repo to the given ref, discarding changes in the index and

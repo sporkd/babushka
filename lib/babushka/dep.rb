@@ -27,17 +27,6 @@ module Babushka
     include LogHelpers
     extend LogHelpers
 
-    # This class is used for deps that aren't defined against a meta dep. Using
-    # this class with the default values it contains means that the code below
-    # can be simpler, because at the code level everything is defined against
-    # a 'template' of some sort; some are just BaseTemplate, and some are
-    # actual meta deps.
-    class BaseTemplate
-      def self.contextual_name; name end
-      def self.suffixed?; false end
-      def self.context_class; DepContext end
-    end
-
     attr_reader :name, :params, :args, :opts, :vars, :dep_source, :load_path
     attr_accessor :result_message
 
@@ -93,7 +82,7 @@ module Babushka
     # this same method on the one chosen by the user, if any.
     def self.find_or_suggest dep_name, opts = {}, &block
       if (dep = Dep(dep_name, opts)).nil?
-        log "#{dep_name.to_s.colorize 'grey'} #{"<- this dep isn't defined!".colorize('red')}"
+        log_stderr "#{dep_name.to_s.colorize 'grey'} #{"<- this dep isn't defined!".colorize('red')}"
         suggestions = Base.sources.current_names.similar_to(dep_name.to_s)
         log "Perhaps you meant #{suggestions.map {|s| "'#{s}'" }.to_list(:conj => 'or')}?".colorize('grey') if suggestions.any?
       elsif block.nil?
@@ -135,7 +124,7 @@ module Babushka
     # suffix, if any. Unlike +#basename+, this method will return anything that
     # looks like a template suffix, even if it doesn't match a template.
     def suffix
-      name.scan(MetaDep::TEMPLATE_NAME_MATCH).flatten.first
+      name.scan(DepTemplate::TEMPLATE_NAME_MATCH).flatten.first
     end
 
     def cache_key
@@ -228,6 +217,17 @@ module Babushka
       Base.task.cache { process_with_caching(with_opts) }
     end
 
+    def process_with_caching with_opts = {}
+      Base.task.opts.update with_opts
+      Base.task.cached(
+        cache_key, :hit => lambda {|value| log_cached(value) }
+      ) {
+        log logging_name, :closing_status => (Base.task.opt(:dry_run) ? :dry_run : true) do
+          process!
+        end
+      }
+    end
+
     private
 
     def self.base_template
@@ -250,18 +250,7 @@ module Babushka
       if !args.empty? && args.length != params.length
         raise DepArgumentError, "The dep '#{name}' accepts #{params.length} argument#{'s' unless params.length == 1}, but #{args.length} #{args.length == 1 ? 'was' : 'were'} passed."
       end
-      params.inject({}) {|hsh,param| hsh[param] = args.shift; hsh }
-    end
-
-    def process_with_caching with_opts = {}
-      Base.task.opts.update with_opts
-      Base.task.cached(
-        cache_key, :hit => lambda {|value| log_cached(value) }
-      ) {
-        log logging_name, :closing_status => (Base.task.opt(:dry_run) ? :dry_run : true) do
-          process!
-        end
-      }
+      Hash[params.zip(args)]
     end
 
     def process!
@@ -300,17 +289,19 @@ module Babushka
     # Each dep recursively processes its own requirements. Hence, this is the
     # method that recurses down the dep tree.
     def process_requirements accessor = :requires
-      requirement_processor = lambda do |requirement|
-        Dep.find_or_suggest requirement.name, :from => dep_source do |dep|
-          dep.with(*requirement.args).send :process_with_caching
-        end
-      end
-
       if Base.task.opt(:dry_run)
-        requirements_for(accessor).map(&requirement_processor).all?
+        requirements_for(accessor).map {|r| process_requirement(r) }.all?
       else
-        requirements_for(accessor).all?(&requirement_processor)
+        requirements_for(accessor).all? {|r| process_requirement(r) }
       end
+    end
+
+    def process_requirement requirement
+      Dep.find_or_suggest requirement.name, :from => dep_source do |dep|
+        dep.with(*requirement.args).process_with_caching
+      end
+    rescue SourceLoadError => e
+      Babushka::Logging.log_exception(e)
     end
 
     # Process this dep, assuming all its requirements are satisfied. This is
@@ -372,10 +363,9 @@ module Babushka
     end
 
     def log_exception_in_dep e
-      log_error e.message
+      Babushka::Logging.log_exception(e)
       advice = e.is_a?(DepDefinitionError) ? "Looks like a problem with '#{name}' - check" : "Check"
       log "#{advice} #{(e.backtrace.detect {|l| l[load_path.to_s] } || load_path).sub(/\:in [^:]+$/, '')}." unless load_path.nil?
-      debug e.backtrace * "\n"
     end
 
     def track_block_for task_name
