@@ -14,7 +14,6 @@ module Babushka
     core_patches/hash
     core_patches/hashish
     core_patches/integer
-    core_patches/io
     core_patches/numeric
     core_patches/bytes
     core_patches/object
@@ -32,6 +31,7 @@ module Babushka
     shell
     git_repo
     resource
+    asset
     prompt
     lambda_chooser
     ip
@@ -47,6 +47,7 @@ module Babushka
     cmdline
     base
     renderable
+    current_ruby
     system_definitions
     system_profile
     system_detector
